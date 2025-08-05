@@ -1,0 +1,274 @@
+Advanced Data Management PA 
+
+A.
+- Summarize one real-world written business report that can be created from the DVD Dataset from the “Labs on Demand Assessment Environment and DVD Database” attachment.  
+
+This report provides an analysis of the most frequently rented DVDs from Showtime DVD’s inventory. 
+Using transactional data from the company’s rental system, we identify which film titles have the highest rental counts. 
+
+A1. 
+- Identify the specific fields that will be included in the detailed table and the summary table of the report.  
+
+### Detailed Table
+
+| Column       | Data Type     |
+|--------------|---------------|
+| rental_id    | INT           |
+| film_id      | INT           |
+| film_title   | VARCHAR(255)  |
+| rental_date  | VARCHAR(20)   |
+| return_date  | VARCHAR(20)   |
+
+### Summary Table
+
+| Column        | Data Type     |
+|---------------|---------------|
+| film_id       | INT           |
+| film_title    | VARCHAR(255)  |
+| total_rentals | INT           |
+
+A2. 
+- Describe the types of data fields used for the report.  
+
+The data fields used fall into 1 of 2 categories: 
+For int, there is rental_id, film_id, and total_rentals. 
+For varchar, there is film_title, rental_date, and return_date. 
+
+A3. 
+- Identify at least two specific tables from the given dataset that will provide the data necessary for the detailed table section and the summary table section of the report. 
+
+To be able to get the necessary data, we will be using rental, film, and inventory tables. 
+
+ 
+A4. 
+- Identify at least one field in the detailed table section that will require a custom transformation with a user-defined function and explain why it should be transformed (e.g., you might translate a field with a value of N to No and Y to Yes). 
+
+The rental_date and return_date fields require a custom transformation using a user-defined function. 
+By default, these fields are stored in the standard YYYY-MM-DD HH:MM:SS format. For improved readability in reports, the function converts the dates to a simpler MM-DD-YYYY format and removes the time component. 
+Since the exact time of rental or return is not relevant to the business question — which focuses only on the date a DVD was rented or returned — this transformation improves clarity without losing meaningful information. 
+
+A5. 
+- Explain the different business uses of the detailed table section and the summary table section of the report. 
+
+Detailed table shows the different dvds by title, when someone rented and when someone returned. 
+With this table, we can get customer behavior insights, analyzing which movies are rented most so we know if we need to order more or less of something. 
+The summary table, on the otherhand, is all about planning. 
+It can help a manager quickly see what is top-performing. 
+This can help put something in key areas of the store to drive sales or if something is underperforming, it could be used near checkout to try and drive sales up. 
+Also easy to see what is performing well to try and upsell to customers as they checkout. 
+
+ 
+
+A6. 
+- Explain how frequently your report should be refreshed to remain relevant to stakeholders. 
+
+New releases happen all the time so I would suggest at least biweekly to get an idea of any shifts in rentals or to be more precise, weekly. 
+  
+
+B.  
+- Provide original code for function(s) in text format that perform the transformation(s) you identified in part A4. 
+
+CREATE OR REPLACE FUNCTION format_date(ts TIMESTAMP) 
+
+RETURNS TEXT AS $$ 
+
+BEGIN 
+
+    RETURN TO_CHAR(ts, 'Mon DD, YYYY'); 
+
+END; 
+
+$$ LANGUAGE plpgsql; 
+
+C.  
+- Provide original SQL code in a text format that creates the detailed and summary tables to hold your report table sections. 
+
+### Detailed Table
+
+CREATE TABLE rental_film_details ( 
+
+rental_id INT, 
+
+film_id INT, 
+
+film_title VARCHAR(255), 
+
+rental_date VARCHAR(20), 
+
+return_date VARCHAR(20) 
+
+); 
+
+ 
+### Summary Table
+
+CREATE TABLE total_movie_count ( 
+
+film_id INT, 
+
+film_title VARCHAR(255), 
+
+total_rentals INT 
+
+); 
+
+D.  
+- Provide an original SQL query in a text format that will extract the raw data needed for the detailed section of your report from the source database. 
+
+INSERT INTO rental_film_details ( 
+
+  rental_id, 
+
+  film_id, 
+
+  film_title, 
+
+  rental_date, 
+
+  return_date 
+
+) 
+
+SELECT   
+
+  r.rental_id, 
+
+  f.film_id, 
+
+  f.title, 
+
+  format_date(r.rental_date), 
+
+  format_date(r.return_date) 
+
+FROM rental AS r 
+
+JOIN inventory AS i ON r.inventory_id = i.inventory_id 
+
+JOIN film AS f ON i.film_id = f.film_id; 
+  
+
+E.  
+- Provide original SQL code in a text format that creates a trigger on the detailed table of the report that will continually update the summary table as data is added to the detailed table. 
+
+ CREATE OR REPLACE FUNCTION update_total_movie_count() 
+
+RETURNS TRIGGER AS $$ 
+
+BEGIN 
+
+    -- Try to update the existing row 
+
+    UPDATE total_movie_count 
+
+    SET total_rentals = total_rentals + 1 
+
+    WHERE film_id = NEW.film_id; 
+
+ 
+
+    -- If no row was updated (meaning it doesn't exist), insert it 
+
+    IF NOT FOUND THEN 
+
+        INSERT INTO total_movie_count (film_id, film_title, total_rentals) 
+
+        VALUES (NEW.film_id, NEW.film_title, 1); 
+
+    END IF; 
+
+ 
+
+    RETURN NEW; 
+
+END; 
+
+$$ LANGUAGE plpgsql; 
+
+
+ 
+CREATE TRIGGER update_detailed_report 
+
+AFTER INSERT ON rental_film_details 
+
+FOR EACH ROW 
+
+EXECUTE FUNCTION update_total_movie_count(); 
+
+ 
+
+ 
+
+F.  
+- Provide an original stored procedure in a text format that can be used to refresh the data in both the detailed table and summary table. The procedure should clear the contents of the detailed table and summary table and perform the raw data extraction from part D. 
+
+CREATE OR REPLACE PROCEDURE refresh_tables()  
+
+LANGUAGE plpgsql AS $$  
+
+BEGIN  
+
+-- Step 1: Clear both tables  
+
+TRUNCATE TABLE rental_film_details;  
+
+TRUNCATE TABLE total_movie_count;  
+
+-- Step 2: Re-add data into detailed table with transformation  
+INSERT INTO rental_film_details (  
+
+ rental_id,  
+ film_id,  
+ film_title,  
+ rental_date,  
+ return_date  
+)  
+SELECT    
+    r.rental_id,  
+    f.film_id,  
+    f.title,  
+    format_date(r.rental_date),    
+    format_date(r.return_date)      
+FROM rental AS r  
+JOIN inventory AS i ON r.inventory_id = i.inventory_id  
+JOIN film AS f ON i.film_id = f.film_id;  
+  
+
+END;  
+
+$$; 
+
+--To execute function 
+
+CALL refresh_tables(); 
+
+ 
+
+1.  
+- Identify a relevant job scheduling tool that can be used to automate the stored procedure. 
+
+Since we are using PostgreSQL, pgAgent is already built-in. 
+It works directly with PostgreSQL and can run scheduled stored functions we have created. 
+
+G.  
+- Provide a Panopto video recording that includes the presenter and a vocalized demonstration of the functionality of the code used for the analysis. 
+
+Note: For instructions on how to access and use Panopto, use the "Panopto How-To Videos" web link provided below. To access Panopto's website, navigate to the web link titled "Panopto Access," and then choose to log in using the “WGU” option. If prompted, log in using your WGU student portal credentials, and then it will forward you to Panopto’s website. 
+ 
+To submit your recording, upload it to the Panopto drop box titled “Advanced Data Management D191 | D326 (Student Creators) [assignments].” Once the recording has been uploaded and processed in Panopto's system, retrieve the URL of the recording from Panopto and copy and paste it into the Links option. Upload the remaining task requirements using the Attachments option. 
+  
+
+H. 
+- Acknowledge all utilized sources, including any sources of third-party code, using in-text citations and references. If no sources are used, clearly declare that no sources were used to support your submission. 
+
+No other sources were used other than materials in course.  
+ 
+
+I.  
+- Demonstrate professional communication in the content and presentation of your submission. 
+
+ 
+
+ 
+
+ 
